@@ -25,22 +25,32 @@ io.on('connection', (socket) => {
     role = 'host'
     socket.join('hosts')
     socket.emit('session:state', { lampsConnected: lamps.size })
+    console.log(`[HOST]  joined  — lamps connected: ${lamps.size}`)
   })
 
-  // Host position update → relay immediately to all lamps
+  // Host position → relay to all lamps, log every 2s
+  let lastLogTime = 0
   socket.on('host:update', ({ lat, lng, velocity, heading, lookaheadSec, baselinePct, manualBri }) => {
     io.to('lamps').emit('corridor:update', {
       lat, lng, velocity, heading, lookaheadSec, baselinePct,
       manualBri: manualBri ?? null,
       timestamp: Date.now(),
     })
+    const now = Date.now()
+    if (now - lastLogTime > 2000) {
+      lastLogTime = now
+      const gps = lat !== null ? `${lat.toFixed(5)},${lng.toFixed(5)}` : 'NO GPS'
+      console.log(`[HOST→] gps:${gps}  speed:${(velocity||0).toFixed(1)}m/s  hdg:${(heading||0).toFixed(0)}°  lookahead:${lookaheadSec}s  lamps:${lamps.size}`)
+    }
   })
 
   socket.on('disconnect', () => {
     if (role === 'host') {
+      console.log('[HOST]  disconnected')
       io.to('lamps').emit('host:disconnected')
     } else if (role === 'lamp') {
       lamps.delete(socket)
+      console.log(`[LAMP]  disconnected  — lamps remaining: ${lamps.size}`)
       io.to('hosts').emit('session:state', { lampsConnected: lamps.size })
     }
   })
@@ -52,6 +62,7 @@ io.on('connection', (socket) => {
     socket.join('lamps')
     io.to('hosts').emit('session:state', { lampsConnected: lamps.size })
     socket.emit('session:state', { lampsConnected: lamps.size })
+    console.log(`[LAMP]  joined  — total lamps: ${lamps.size}`)
   })
 
   socket.on('lamp:ping', () => { /* presence only */ })
