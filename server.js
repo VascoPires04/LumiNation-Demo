@@ -23,7 +23,17 @@ function log(line) {
 }
 
 // ── Session state ─────────────────────────────────────────────────────────────
-const lamps = new Set()
+const lamps    = new Set()
+const lampPos  = new Map()   // socket.id → { lat, lng }
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R  = 6371000
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180
+  const Δφ = (lat2 - lat1) * Math.PI / 180
+  const Δλ = (lng2 - lng1) * Math.PI / 180
+  const a  = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+}
 
 // ── Static files ──────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')))
@@ -126,6 +136,15 @@ io.on('connection', (socket) => {
       lastLogTime = now
       const gps = lat !== null ? `${lat.toFixed(5)},${lng.toFixed(5)}` : 'NO GPS'
       log(`[HOST→] gps:${gps}  speed:${(velocity||0).toFixed(1)}m/s  hdg:${(heading||0).toFixed(0)}°  lookahead:${lookaheadSec}s  lamps:${lamps.size}`)
+      // Log distance to each lamp that has a known position
+      if (lat !== null) {
+        let i = 1
+        for (const [id, pos] of lampPos) {
+          const d = haversineMeters(lat, lng, pos.lat, pos.lng).toFixed(1)
+          log(`  lamp${i} dist: ${d}m`)
+          i++
+        }
+      }
     }
   })
 
@@ -135,6 +154,7 @@ io.on('connection', (socket) => {
       io.to('lamps').emit('host:disconnected')
     } else if (role === 'lamp') {
       lamps.delete(socket)
+      lampPos.delete(socket.id)
       log(`[LAMP]  disconnected  — lamps remaining: ${lamps.size}`)
       io.to('hosts').emit('session:state', { lampsConnected: lamps.size })
     }
@@ -150,7 +170,9 @@ io.on('connection', (socket) => {
     log(`[LAMP]  joined  — total lamps: ${lamps.size}`)
   })
 
-  socket.on('lamp:ping', () => { /* presence only */ })
+  socket.on('lamp:ping', ({ lat, lng } = {}) => {
+    if (lat != null && lng != null) lampPos.set(socket.id, { lat, lng })
+  })
 })
 
 // ── Start ─────────────────────────────────────────────────────────────────────

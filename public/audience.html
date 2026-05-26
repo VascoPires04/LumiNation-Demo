@@ -248,17 +248,24 @@
     }
 
     function onGpsError() {
-      gpsStatusEl.textContent = 'GPS unavailable. Make sure location is enabled and try outdoors.'
+      if (!connected) {
+        connected = true
+        gpsStatusEl.textContent = 'No GPS — joining as baseline lamp.'
+        setTimeout(() => {
+          gpsOverlay.classList.add('gone')
+          connectSocket()
+        }, 1200)
+      }
     }
 
     if ('geolocation' in navigator) {
       navigator.geolocation.watchPosition(onGpsSuccess, onGpsError, {
         enableHighAccuracy: true,
         maximumAge: 0,
-        timeout: 15000,
+        timeout: 8000,
       })
     } else {
-      gpsStatusEl.textContent = 'GPS not supported on this device.'
+      onGpsError()
     }
 
     // ── WakeLock ──────────────────────────────────────────────────────────
@@ -465,7 +472,7 @@
         // GPS ping every 2s (presence + position)
         if (pingInterval) clearInterval(pingInterval)
         pingInterval = setInterval(() => {
-          socket.emit('lamp:ping')
+          socket.emit('lamp:ping', { lat: myLat, lng: myLng })
         }, 2000)
       })
 
