@@ -25,7 +25,7 @@
       position: relative;
     }
 
-    /* ── GPS waiting overlay ──────────────────────────────────────── */
+    /* ── GPS overlay ─────────────────────────────────────────────── */
     #gps-overlay {
       position: fixed;
       inset: 0;
@@ -48,20 +48,13 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .gps-text {
-      font-size: 0.88rem;
-      color: rgba(245,245,248,0.45);
+    .gps-status {
+      font-size: 0.85rem;
+      color: rgba(245,245,248,0.4);
       text-align: center;
       max-width: 260px;
       line-height: 1.6;
-    }
-
-    .gps-skip {
-      font-size: 0.72rem;
-      color: rgba(250,199,117,0.4);
-      text-decoration: underline;
-      cursor: pointer;
-      margin-top: 8px;
+      padding: 0 24px;
     }
 
     /* ── Gradient background layer ────────────────────────────────── */
@@ -189,35 +182,14 @@
     }
     #disconnected.visible { opacity: 1; }
 
-    /* ── GPS error banner ────────────────────────────────────────── */
-    #gps-error {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(180,100,30,0.18);
-      border: 1px solid rgba(245,158,11,0.28);
-      color: rgba(245,245,248,0.65);
-      padding: 9px 18px;
-      border-radius: 20px;
-      font-size: 0.72rem;
-      letter-spacing: 0.03em;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
-      white-space: nowrap;
-      z-index: 50;
-    }
-    #gps-error.visible { opacity: 1; }
   </style>
 </head>
 <body>
 
-  <!-- ── GPS acquiring overlay ─────────────────────────────────────────── -->
-  <div id="gps-overlay" class="gone">
+  <!-- ── GPS overlay (blocks until fix acquired) ──────────────────────── -->
+  <div id="gps-overlay">
     <div class="gps-spinner"></div>
-    <div class="gps-text">Acquiring GPS position…<br>Stand outdoors for best accuracy.</div>
-    <div class="gps-skip" id="gps-skip">Skip — use without GPS</div>
+    <div class="gps-status" id="gps-status">Acquiring GPS… go outside if indoors.</div>
   </div>
 
   <!-- ── Gradient background ───────────────────────────────────────────── -->
@@ -246,58 +218,39 @@
 
   <!-- ── Banners ───────────────────────────────────────────────────────── -->
   <div id="disconnected">Connection lost — reconnecting…</div>
-  <div id="gps-error">GPS unavailable — distance is estimated</div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    startApp()
-
     // ── GPS ───────────────────────────────────────────────────────────────
-    let myLat = null
-    let myLng = null
-    let gpsReady = false
+    let myLat    = null
+    let myLng    = null
+    let connected = false
 
     const gpsOverlay  = document.getElementById('gps-overlay')
-    const gpsErrorBnr = document.getElementById('gps-error')
-    const gpsSkipEl   = document.getElementById('gps-skip')
-
-    function startApp() {
-      // Show GPS acquiring overlay
-      gpsOverlay.classList.remove('gone')
-
-      if ('geolocation' in navigator) {
-        navigator.geolocation.watchPosition(onGpsSuccess, onGpsError, {
-          enableHighAccuracy: true,
-          maximumAge: 0,
-          timeout: 15000,
-        })
-      } else {
-        onGpsError({ code: 0 })
-      }
-
-      gpsSkipEl.addEventListener('click', () => {
-        gpsOverlay.classList.add('gone')
-        connectSocket()
-      }, { once: true })
-    }
+    const gpsStatusEl = document.getElementById('gps-status')
 
     function onGpsSuccess(pos) {
       myLat = pos.coords.latitude
       myLng = pos.coords.longitude
-      if (!gpsReady) {
-        gpsReady = true
+      if (!connected) {
+        connected = true
         gpsOverlay.classList.add('gone')
-        gpsErrorBnr.classList.remove('visible')
         connectSocket()
       }
     }
 
     function onGpsError() {
-      if (!gpsReady) {
-        gpsOverlay.classList.add('gone')
-        gpsErrorBnr.classList.add('visible')
-        connectSocket()
-      }
+      gpsStatusEl.textContent = 'GPS unavailable. Make sure location is enabled and try outdoors.'
+    }
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.watchPosition(onGpsSuccess, onGpsError, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000,
+      })
+    } else {
+      gpsStatusEl.textContent = 'GPS not supported on this device.'
     }
 
     // ── WakeLock ──────────────────────────────────────────────────────────
@@ -421,13 +374,12 @@
     }
 
     // ── Socket.io ─────────────────────────────────────────────────────────
-    let socket = null
     let pingInterval = null
 
     function connectSocket() {
       requestWakeLock()
 
-      socket = io()
+      const socket = io()
 
       socket.on('connect', () => {
         document.getElementById('disconnected').classList.remove('visible')
