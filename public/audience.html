@@ -304,20 +304,23 @@
       return diff
     }
 
-    const MIN_RADIUS = 15  // metres — always react within this distance
+    const MIN_LOOKAHEAD  = 20   // metres — minimum corridor ahead regardless of speed
+    const SAFETY_BEHIND  = 10   // metres — keep lit after walker passes
+    const CORRIDOR_WIDTH = 30   // metres perpendicular — generous for GPS inaccuracy
 
     // ── Corridor state ────────────────────────────────────────────────────
-    let hostLat      = null
-    let hostLng      = null
-    let hostVelocity = 0
-    let hostHeading  = 0
-    let lookaheadSec = 5.0
-    let baselinePct  = 0.30
+    let hostLat       = null
+    let hostLng       = null
+    let hostVelocity  = 0
+    let hostHeading   = 0
+    let lookaheadSec  = 5.0
+    let baselinePct   = 0.30
+    let lastHostUpdate = 0   // timestamp of last corridor:update (for dead reckoning)
 
     // Brightness animation
-    let currentBri    = 0.30  // starts at baseline
+    let currentBri    = 0.30
     let lastFrameTime = null
-    let manualBri     = null  // non-null → bypass GPS algorithm
+    let manualBri     = null
 
     // ── Debug panel (tap top-left corner 3× to toggle) ───────────────────
     const debugEl = document.getElementById('debug')
@@ -375,19 +378,36 @@
       if (manualBri !== null) {
         target = manualBri
       } else if (myLat !== null && hostLat !== null) {
-        const dist         = haversineMeters(myLat, myLng, hostLat, hostLng)
-        const diff         = bearingDiff(hostLat, hostLng, hostHeading, myLat, myLng)
-        const isAhead      = Math.abs(diff) < 90
-        const lookaheadDist = Math.max(hostVelocity * lookaheadSec, MIN_RADIUS)
+        const R = 6371000
 
-        if (dist <= lookaheadDist) {
-          // Inside corridor — brightness scales with proximity (1 = right next to host)
-          const proximity = 1 - (dist / lookaheadDist)
-          // Ahead gets full brightness, behind gets 60% — no hard cutoff
-          const dirFactor = isAhead ? 1.0 : 0.6
-          target = baselinePct + (1 - baselinePct) * proximity * dirFactor
-        } else {
-          target = baselinePct
+        // ── Dead reckoning: extrapolate host position since last GPS update ──
+        const age    = Math.min((performance.now() - lastHostUpdate) / 1000, 2.0)
+        const hRad   = hostHeading * Math.PI / 180
+        const exLat  = hostLat + age * hostVelocity * Math.cos(hRad) * (180 / Math.PI) / R
+        const exLng  = hostLng + age * hostVelocity * Math.sin(hRad) * (180 / Math.PI) / (R * Math.cos(hostLat * Math.PI / 180))
+
+        // ── Local coordinate frame (metres from extrapolated host) ──────────
+        const dLat = (myLat - exLat) * Math.PI / 180 * R
+        const dLng = (myLng - exLng) * Math.PI / 180 * R * Math.cos(exLat * Math.PI / 180)
+
+        // Project onto heading: positive = lamp is AHEAD of walker
+        const hx       = Math.sin(hRad)   // east component of heading
+        const hy       = Math.cos(hRad)   // north component of heading
+        const along    = dLat * hy + dLng * hx   // metres along path
+        const perp     = Math.abs(dLat * hx - dLng * hy)  // metres off path
+
+        const lookaheadDist = Math.max(hostVelocity * lookaheadSec, MIN_LOOKAHEAD)
+
+        if (perp <= CORRIDOR_WIDTH) {
+          if (along >= 0 && along <= lookaheadDist) {
+            // AHEAD in corridor: fully lit, tiny falloff at far edge
+            const t = 1 - (along / lookaheadDist) * 0.2  // 1.0→0.8 across corridor
+            target = baselinePct + (1 - baselinePct) * t
+          } else if (along < 0 && along >= -SAFETY_BEHIND) {
+            // JUST PASSED: fade from full to baseline
+            const t = 1 + (along / SAFETY_BEHIND)   // 1.0 at walker, 0.0 at edge
+            target = baselinePct + (1 - baselinePct) * Math.max(0, t)
+          }
         }
       }
 
@@ -399,24 +419,29 @@
 
       applyBrightness(currentBri)
 
-      if (debugVisible) {
-        const dist = (myLat !== null && hostLat !== null)
-          ? haversineMeters(myLat, myLng, hostLat, hostLng).toFixed(1) + 'm'
-          : 'n/a'
-        const ahead = (myLat !== null && hostLat !== null)
-          ? (Math.abs(bearingDiff(hostLat, hostLng, hostHeading, myLat, myLng)) < 90 ? 'YES' : 'NO')
-          : 'n/a'
+      if (debugVisible && myLat !== null && hostLat !== null) {
+        const R      = 6371000
+        const age    = Math.min((performance.now() - lastHostUpdate) / 1000, 2.0)
+        const hRad   = hostHeading * Math.PI / 180
+        const exLat  = hostLat + age * hostVelocity * Math.cos(hRad) * (180/Math.PI) / R
+        const exLng  = hostLng + age * hostVelocity * Math.sin(hRad) * (180/Math.PI) / (R * Math.cos(hostLat*Math.PI/180))
+        const dLat   = (myLat - exLat) * Math.PI/180 * R
+        const dLng   = (myLng - exLng) * Math.PI/180 * R * Math.cos(exLat*Math.PI/180)
+        const hx = Math.sin(hRad), hy = Math.cos(hRad)
+        const along  = (dLat * hy + dLng * hx).toFixed(1)
+        const perp   = Math.abs(dLat * hx - dLng * hy).toFixed(1)
+        const lookaheadDist = Math.max(hostVelocity * lookaheadSec, MIN_LOOKAHEAD).toFixed(0)
         debugEl.textContent =
-          `my GPS   : ${myLat?.toFixed(5) ?? '—'}, ${myLng?.toFixed(5) ?? '—'}\n` +
-          `host GPS : ${hostLat?.toFixed(5) ?? '—'}, ${hostLng?.toFixed(5) ?? '—'}\n` +
-          `distance : ${dist}\n` +
-          `I am ahead: ${ahead}\n` +
+          `my GPS    : ${myLat.toFixed(5)}, ${myLng.toFixed(5)}\n` +
+          `host GPS  : ${hostLat.toFixed(5)}, ${hostLng.toFixed(5)}\n` +
+          `dead reckon age: ${age.toFixed(1)}s\n` +
+          `along path: ${along}m  (+ = ahead)\n` +
+          `perp dist : ${perp}m\n` +
           `host speed: ${hostVelocity.toFixed(1)} m/s\n` +
-          `lookahead : ${Math.max(hostVelocity * lookaheadSec, MIN_RADIUS).toFixed(0)}m (min ${MIN_RADIUS}m)\n` +
-          `heading  : ${hostHeading.toFixed(0)}°\n` +
-          `baseline : ${(baselinePct * 100).toFixed(0)}%\n` +
+          `corridor  : ${lookaheadDist}m ahead / ${SAFETY_BEHIND}m behind\n` +
+          `heading   : ${hostHeading.toFixed(0)}°\n` +
           `brightness: ${(currentBri * 100).toFixed(0)}%\n` +
-          `manual   : ${manualBri !== null ? (manualBri * 100).toFixed(0) + '%' : 'off'}`
+          `manual    : ${manualBri !== null ? (manualBri*100).toFixed(0)+'%' : 'off'}`
       }
 
       requestAnimationFrame(raf)
@@ -449,14 +474,15 @@
       })
 
       socket.on('corridor:update', (data) => {
-        hostLat      = data.lat
-        hostLng      = data.lng
-        hostVelocity = Math.max(0, data.velocity || 0)
-        hostHeading  = data.heading || 0
-        lookaheadSec = data.lookaheadSec || 3.0
-        baselinePct  = data.baselinePct  || 0.30
-        manualBri    = (data.manualBri !== null && data.manualBri !== undefined)
-                       ? data.manualBri : null
+        hostLat        = data.lat
+        hostLng        = data.lng
+        hostVelocity   = Math.max(0, data.velocity || 0)
+        hostHeading    = data.heading || 0
+        lookaheadSec   = data.lookaheadSec || 5.0
+        baselinePct    = data.baselinePct  || 0.30
+        lastHostUpdate = performance.now()
+        manualBri      = (data.manualBri !== null && data.manualBri !== undefined)
+                         ? data.manualBri : null
       })
 
       socket.on('session:state', ({ lampsConnected }) => {
