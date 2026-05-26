@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LumiNation — Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --amber:  #FAC775;
+      --bg:     #07070c;
+      --surface:#0f0f1a;
+      --border: rgba(250,199,117,0.14);
+      --text:   rgba(245,245,248,0.9);
+      --muted:  rgba(245,245,248,0.38);
+    }
+
+    html, body {
+      height: 100%;
+      height: 100dvh;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 48px;
+      padding: 48px 28px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .wordmark {
+      font-size: 2.6rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      text-align: center;
+    }
+    .wordmark span { color: var(--amber); }
+
+    .tagline {
+      font-size: 0.78rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: -36px;
+      text-align: center;
+    }
+
+    /* ── Role buttons ──────────────────────────────────────────────── */
+    .roles {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      width: 100%;
+      max-width: 360px;
+    }
+
+    .role-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      width: 100%;
+      padding: 22px 26px;
+      border-radius: 18px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color 0.2s, background 0.2s, transform 0.12s;
+      touch-action: manipulation;
+    }
+    .role-btn:active { transform: scale(0.97); }
+
+    .role-btn.primary {
+      background: var(--amber);
+      border-color: transparent;
+      color: #07070c;
+    }
+
+    .role-btn-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .role-btn-sub {
+      font-size: 0.78rem;
+      opacity: 0.55;
+    }
+    .role-btn.primary .role-btn-sub { opacity: 0.65; }
+
+  </style>
+</head>
+<body>
+
+  <div>
+    <div class="wordmark">Lumi<span>Nation</span></div>
+  </div>
+  <div class="tagline">Street Demo</div>
+
+  <div class="roles">
+    <a class="role-btn primary" href="/host">
+      <span class="role-btn-title">I am the walker</span>
+      <span class="role-btn-sub">Start a new demo session</span>
+    </a>
+
+    <a class="role-btn" href="/audience">
+      <span class="role-btn-title">I am a lamp</span>
+      <span class="role-btn-sub">Join with room code or QR scan</span>
+    </a>
+  </div>
+
+</body>
+</html>

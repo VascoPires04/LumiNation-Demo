@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#07070c">
+  <title>LumiNation</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      background: #07070c;
+      font-family: system-ui, -apple-system, sans-serif;
+      position: relative;
+    }
+
+    /* ── GPS waiting overlay ──────────────────────────────────────── */
+    #gps-overlay {
+      position: fixed;
+      inset: 0;
+      background: #07070c;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 200;
+    }
+    #gps-overlay.gone { display: none; }
+
+    .gps-spinner {
+      width: 36px; height: 36px;
+      border: 2px solid rgba(250,199,117,0.15);
+      border-top-color: #FAC775;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .gps-text {
+      font-size: 0.88rem;
+      color: rgba(245,245,248,0.45);
+      text-align: center;
+      max-width: 260px;
+      line-height: 1.6;
+    }
+
+    .gps-skip {
+      font-size: 0.72rem;
+      color: rgba(250,199,117,0.4);
+      text-decoration: underline;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+
+    /* ── Gradient background layer ────────────────────────────────── */
+    #bg {
+      position: fixed;
+      inset: 0;
+      background: #07070c;
+      /* Updated by JS each RAF frame */
+    }
+
+    /* ── Content layer ────────────────────────────────────────────── */
+    #content {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .wordmark {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: rgba(250,199,117,0.35);
+      animation: breathe 3.5s ease-in-out infinite;
+      transition: color 0.4s ease;
+    }
+    .wordmark span { color: rgba(250,199,117,0.6); transition: color 0.4s ease; }
+
+    /* Switch to dark when screen is bright */
+    body.lit .wordmark       { color: rgba(60,40,5,0.7); animation: none; }
+    body.lit .wordmark span  { color: rgba(60,40,5,0.9); }
+
+    @keyframes breathe {
+      0%, 100% { opacity: 0.55; }
+      50%       { opacity: 1;   }
+    }
+
+    .sub-text {
+      margin-top: 14px;
+      font-size: 0.8rem;
+      color: rgba(245,245,248,0.25);
+      letter-spacing: 0.04em;
+      text-align: center;
+      transition: color 0.4s ease;
+    }
+    body.lit .sub-text { color: rgba(60,40,5,0.5); }
+
+    /* ── Lamp count (bottom) ──────────────────────────────────────── */
+    #lamp-count {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.7rem;
+      color: rgba(245,245,248,0.2);
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+      z-index: 10;
+      transition: color 0.4s ease;
+    }
+    body.lit #lamp-count { color: rgba(60,40,5,0.35); }
+
+    /* ── Stopped messages ─────────────────────────────────────────── */
+    #msg1, #msg2 {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+      padding: 48px 36px;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.8s ease;
+      z-index: 20;
+    }
+
+    .stopped-headline {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: rgba(245,245,248,0.85);
+      line-height: 1.4;
+    }
+
+    .stopped-wordmark {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: rgba(245,245,248,0.92);
+    }
+    .stopped-wordmark span { color: #FAC775; }
+
+    .stopped-tagline {
+      font-size: 0.95rem;
+      color: rgba(245,245,248,0.45);
+      line-height: 1.9;
+      font-style: italic;
+      max-width: 300px;
+    }
+
+    /* ── Disconnected banner ──────────────────────────────────────── */
+    #disconnected {
+      position: fixed;
+      bottom: 56px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(180,30,30,0.18);
+      border: 1px solid rgba(220,38,38,0.28);
+      color: rgba(245,245,248,0.65);
+      padding: 9px 18px;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      letter-spacing: 0.03em;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      white-space: nowrap;
+      z-index: 50;
+    }
+    #disconnected.visible { opacity: 1; }
+
+    /* ── GPS error banner ────────────────────────────────────────── */
+    #gps-error {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(180,100,30,0.18);
+      border: 1px solid rgba(245,158,11,0.28);
+      color: rgba(245,245,248,0.65);
+      padding: 9px 18px;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      letter-spacing: 0.03em;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      white-space: nowrap;
+      z-index: 50;
+    }
+    #gps-error.visible { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <!-- ── GPS acquiring overlay ─────────────────────────────────────────── -->
+  <div id="gps-overlay" class="gone">
+    <div class="gps-spinner"></div>
+    <div class="gps-text">Acquiring GPS position…<br>Stand outdoors for best accuracy.</div>
+    <div class="gps-skip" id="gps-skip">Skip — use without GPS</div>
+  </div>
+
+  <!-- ── Gradient background ───────────────────────────────────────────── -->
+  <div id="bg"></div>
+
+  <!-- ── Content ───────────────────────────────────────────────────────── -->
+  <div id="content">
+    <div class="wordmark" id="wordmark">Lumi<span>Nation</span></div>
+    <div class="sub-text" id="sub-text">the corridor follows you</div>
+  </div>
+
+  <!-- ── Lamp count ────────────────────────────────────────────────────── -->
+  <div id="lamp-count"></div>
+
+  <!-- ── Stopped messages ──────────────────────────────────────────────── -->
+  <div id="msg1">
+    <div class="stopped-headline">The corridor followed you.</div>
+  </div>
+  <div id="msg2">
+    <div class="stopped-wordmark">Lumi<span>Nation</span></div>
+    <div class="stopped-tagline">
+      "We are not turning the lights off.<br>
+       We are turning them on intelligently."
+    </div>
+  </div>
+
+  <!-- ── Banners ───────────────────────────────────────────────────────── -->
+  <div id="disconnected">Connection lost — reconnecting…</div>
+  <div id="gps-error">GPS unavailable — distance is estimated</div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    startApp()
+
+    // ── GPS ───────────────────────────────────────────────────────────────
+    let myLat = null
+    let myLng = null
+    let gpsReady = false
+
+    const gpsOverlay  = document.getElementById('gps-overlay')
+    const gpsErrorBnr = document.getElementById('gps-error')
+    const gpsSkipEl   = document.getElementById('gps-skip')
+
+    function startApp() {
+      // Show GPS acquiring overlay
+      gpsOverlay.classList.remove('gone')
+
+      if ('geolocation' in navigator) {
+        navigator.geolocation.watchPosition(onGpsSuccess, onGpsError, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 15000,
+        })
+      } else {
+        onGpsError({ code: 0 })
+      }
+
+      gpsSkipEl.addEventListener('click', () => {
+        gpsOverlay.classList.add('gone')
+        connectSocket()
+      }, { once: true })
+    }
+
+    function onGpsSuccess(pos) {
+      myLat = pos.coords.latitude
+      myLng = pos.coords.longitude
+      if (!gpsReady) {
+        gpsReady = true
+        gpsOverlay.classList.add('gone')
+        gpsErrorBnr.classList.remove('visible')
+        connectSocket()
+      }
+    }
+
+    function onGpsError() {
+      if (!gpsReady) {
+        gpsOverlay.classList.add('gone')
+        gpsErrorBnr.classList.add('visible')
+        connectSocket()
+      }
+    }
+
+    // ── WakeLock ──────────────────────────────────────────────────────────
+    let wakeLock = null
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen')
+          wakeLock.addEventListener('release', () => { wakeLock = null })
+        }
+      } catch (_) {}
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !wakeLock) requestWakeLock()
+    })
+    document.addEventListener('touchstart', () => {
+      if (!wakeLock) requestWakeLock()
+    }, { once: true })
+
+    // ── Haversine ─────────────────────────────────────────────────────────
+    function haversineMeters(lat1, lng1, lat2, lng2) {
+      const R  = 6371000
+      const φ1 = lat1 * Math.PI / 180
+      const φ2 = lat2 * Math.PI / 180
+      const Δφ = (lat2 - lat1) * Math.PI / 180
+      const Δλ = (lng2 - lng1) * Math.PI / 180
+      const a  = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+    }
+
+    // ── Bearing difference (am I ahead or behind the host?) ───────────────
+    function bearingDiff(hostLat, hostLng, hostHeading, myLat, myLng) {
+      const y = Math.sin((myLng - hostLng) * Math.PI/180) * Math.cos(myLat * Math.PI/180)
+      const x = Math.cos(hostLat * Math.PI/180) * Math.sin(myLat * Math.PI/180)
+              - Math.sin(hostLat * Math.PI/180) * Math.cos(myLat * Math.PI/180)
+              * Math.cos((myLng - hostLng) * Math.PI/180)
+      const bearingToMe = Math.atan2(y, x) * 180 / Math.PI
+      let diff = bearingToMe - hostHeading
+      while (diff >  180) diff -= 360
+      while (diff < -180) diff += 360
+      return diff
+    }
+
+    // ── Corridor state ────────────────────────────────────────────────────
+    let hostLat      = null
+    let hostLng      = null
+    let hostVelocity = 0
+    let hostHeading  = 0
+    let lookaheadSec = 3.0
+    let baselinePct  = 0.30
+
+    // Brightness animation
+    let currentBri    = 0.30  // starts at baseline
+    let lastFrameTime = null
+    let manualBri     = null  // non-null → bypass GPS algorithm
+
+    // ── Apply brightness to screen ────────────────────────────────────────
+    const bgEl      = document.getElementById('bg')
+    const bodyEl    = document.body
+    const lampCntEl = document.getElementById('lamp-count')
+
+    function applyBrightness(bri) {
+      // How much above baseline we are (0 = at baseline, 1 = fully lit)
+      const t = Math.max(0, Math.min(1, (bri - baselinePct) / Math.max(1 - baselinePct, 0.01)))
+
+      // Baseline always shows a small warm glow
+      const r1 = t * 180
+      const r2 = t * 320
+      const r3 = 50 + t * 450   // small glow even at baseline
+
+      bgEl.style.background = [
+        `radial-gradient(circle at center, rgba(255,248,232,${(0.9*t).toFixed(3)}) 0px, rgba(255,248,232,0) ${r1.toFixed(0)}px)`,
+        `radial-gradient(circle at center, rgba(250,199,117,${(0.85*t).toFixed(3)}) 0px, rgba(250,199,117,0) ${r2.toFixed(0)}px)`,
+        `radial-gradient(circle at center, rgba(200,140,40,0.28) 0px, rgba(200,140,40,0) ${r3.toFixed(0)}px)`,
+        '#07070c',
+      ].join(', ')
+
+      // Switch text to dark when screen is very bright
+      bodyEl.classList.toggle('lit', t > 0.55)
+    }
+
+    // ── Animation loop ────────────────────────────────────────────────────
+    function raf(ts) {
+      if (lastFrameTime === null) lastFrameTime = ts
+      const dt = Math.min((ts - lastFrameTime) / 1000, 0.1)  // cap at 100ms
+      lastFrameTime = ts
+
+      let target = baselinePct
+
+      if (manualBri !== null) {
+        // Host sent a manual override — use it directly
+        target = manualBri
+      } else if (myLat !== null && hostLat !== null) {
+        const dist    = haversineMeters(myLat, myLng, hostLat, hostLng)
+        const diff    = bearingDiff(hostLat, hostLng, hostHeading, myLat, myLng)
+        const isAhead = Math.abs(diff) < 90
+
+        const lookaheadDist = hostVelocity * lookaheadSec
+        const safetyBehind  = 2.0  // meters
+
+        if (isAhead && lookaheadDist > 0 && dist <= lookaheadDist) {
+          const t = 1 - (dist / lookaheadDist)
+          target  = baselinePct + (1 - baselinePct) * t
+        } else if (!isAhead && dist <= safetyBehind) {
+          target  = baselinePct + 0.15
+        } else {
+          target  = baselinePct
+        }
+      }
+
+      // Asymmetric easing: fast warm-up (τ=0.3s), slow dim-down (τ=0.8s)
+      const τ    = target > currentBri ? 0.3 : 0.8
+      const ease = 1 - Math.exp(-dt / τ)
+      currentBri += (target - currentBri) * ease
+      currentBri  = Math.max(0, Math.min(1, currentBri))
+
+      applyBrightness(currentBri)
+      requestAnimationFrame(raf)
+    }
+
+    // ── Socket.io ─────────────────────────────────────────────────────────
+    let socket = null
+    let pingInterval = null
+
+    function connectSocket() {
+      requestWakeLock()
+
+      socket = io()
+
+      socket.on('connect', () => {
+        document.getElementById('disconnected').classList.remove('visible')
+        socket.emit('lamp:join')
+
+        // Start RAF loop
+        if (lastFrameTime === null) requestAnimationFrame(raf)
+
+        // GPS ping every 2s (presence + position)
+        if (pingInterval) clearInterval(pingInterval)
+        pingInterval = setInterval(() => {
+          socket.emit('lamp:ping')
+        }, 2000)
+      })
+
+      socket.on('disconnect', () => {
+        document.getElementById('disconnected').classList.add('visible')
+      })
+
+      socket.on('corridor:update', (data) => {
+        hostLat      = data.lat
+        hostLng      = data.lng
+        hostVelocity = Math.max(0, data.velocity || 0)
+        hostHeading  = data.heading || 0
+        lookaheadSec = data.lookaheadSec || 3.0
+        baselinePct  = data.baselinePct  || 0.30
+        manualBri    = (data.manualBri !== null && data.manualBri !== undefined)
+                       ? data.manualBri : null
+      })
+
+      socket.on('session:state', ({ lampsConnected }) => {
+        lampCntEl.textContent = lampsConnected > 0
+          ? lampsConnected + (lampsConnected === 1 ? ' lamp connected' : ' lamps connected')
+          : ''
+      })
+
+      socket.on('host:disconnected', () => {
+        // Host walked away — graceful end sequence
+        enterStopped()
+      })
+    }
+
+    // ── Stopped sequence ──────────────────────────────────────────────────
+    function enterStopped() {
+      const msg1 = document.getElementById('msg1')
+      const msg2 = document.getElementById('msg2')
+
+      // Fade to near-dark
+      currentBri = baselinePct
+      applyBrightness(currentBri)
+      document.getElementById('content').style.opacity = '0'
+      lampCntEl.style.opacity = '0'
+
+      setTimeout(() => {
+        msg1.style.opacity = '1'
+        setTimeout(() => {
+          msg1.style.opacity = '0'
+          setTimeout(() => { msg2.style.opacity = '1' }, 700)
+        }, 3200)
+      }, 600)
+    }
+  </script>
+</body>
+</html>

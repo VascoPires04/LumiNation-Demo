@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <title>LumiNation — Walker</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --amber:   #FAC775;
+      --bg:      #07070c;
+      --surface: #0f0f1a;
+      --border:  rgba(250,199,117,0.14);
+      --text:    rgba(245,245,248,0.9);
+      --muted:   rgba(245,245,248,0.42);
+      --green:   #4ade80;
+      --red:     #f87171;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding: 28px 20px 48px;
+      gap: 22px;
+      max-width: 480px;
+      margin: 0 auto;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── Wordmark ─────────────────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .wordmark {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .wordmark span { color: var(--amber); }
+    .badge {
+      font-size: 0.68rem;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border: 1px solid rgba(245,245,248,0.12);
+      border-radius: 6px;
+      padding: 3px 8px;
+    }
+
+    /* ── Status bar ───────────────────────────────────────────────── */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #2a2a3a;
+      flex-shrink: 0;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .dot.on { background: var(--green); box-shadow: 0 0 8px rgba(74,222,128,0.55); }
+    .dot.warn { background: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.55); }
+    .status-text { flex: 1; font-size: 0.82rem; color: var(--muted); }
+    .lamp-count { font-size: 0.82rem; color: var(--amber); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    /* ── Room + QR ────────────────────────────────────────────────── */
+    .room-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 20px;
+    }
+
+    .room-label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .qr-frame {
+      padding: 16px;
+      border: 1px solid rgba(250,199,117,0.15);
+      border-radius: 14px;
+      background: #0d0d16;
+    }
+    #qr canvas, #qr img { display: block; border-radius: 6px; }
+
+    .qr-hint {
+      font-size: 0.74rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    /* ── Live metrics ─────────────────────────────────────────────── */
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .metric-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .metric-value {
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    .metric-unit {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .gps-accuracy {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-align: center;
+    }
+    .gps-accuracy .ok   { color: var(--green); }
+    .gps-accuracy .warn { color: #f59e0b; }
+    .gps-accuracy .bad  { color: var(--red); }
+
+    /* ── Collapsible settings ─────────────────────────────────────── */
+    .collapsible {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .collapsible-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .collapsible-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .chevron {
+      font-size: 0.75rem;
+      color: var(--muted);
+      transition: transform 0.2s;
+    }
+    .chevron.open { transform: rotate(180deg); }
+
+    .collapsible-body {
+      display: none;
+      flex-direction: column;
+      gap: 18px;
+      padding: 4px 18px 20px;
+      border-top: 1px solid var(--border);
+    }
+    .collapsible-body.open { display: flex; }
+
+    /* ── Sliders ──────────────────────────────────────────────────── */
+    .slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .slider-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .slider-val {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--amber);
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"].slim {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 36px;
+      border-radius: 18px;
+      outline: none;
+      cursor: grab;
+      border: 1px solid rgba(250,199,117,0.16);
+      background: linear-gradient(
+        to right,
+        #FAC775 0%, #FAC775 var(--fill, 50%),
+        #16162a var(--fill, 50%), #16162a 100%
+      );
+      touch-action: none;
+    }
+    input[type="range"].slim:active { cursor: grabbing; }
+    input[type="range"].slim::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 35%, #FFE8A8, #FAC775 60%, #e8a83a);
+      box-shadow: 0 0 0 2px rgba(250,199,117,0.2), 0 0 14px rgba(250,199,117,0.45);
+      cursor: grab;
+    }
+    input[type="range"].slim::-moz-range-thumb {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: radial-gradient(circle at 38% 35%, #FFE8A8, #FAC775 60%, #e8a83a);
+    }
+
+    /* ── Manual override ──────────────────────────────────────────── */
+    .override-hint {
+      font-size: 0.74rem;
+      color: rgba(248,113,113,0.75);
+      text-align: center;
+      padding: 8px 0 0;
+    }
+
+    input[type="range"].big {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 56px;
+      border-radius: 28px;
+      outline: none;
+      cursor: grab;
+      border: 1px solid rgba(248,113,113,0.22);
+      background: linear-gradient(
+        to right,
+        rgba(248,113,113,0.7) 0%, rgba(248,113,113,0.7) var(--fill, 50%),
+        #16162a var(--fill, 50%), #16162a 100%
+      );
+      touch-action: none;
+    }
+    input[type="range"].big::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 35%, #fca5a5, #f87171 60%, #dc2626);
+      box-shadow: 0 0 0 2px rgba(248,113,113,0.2), 0 0 14px rgba(248,113,113,0.4);
+      cursor: grab;
+    }
+    input[type="range"].big::-moz-range-thumb {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      border: none;
+      background: radial-gradient(circle at 38% 35%, #fca5a5, #f87171 60%, #dc2626);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="wordmark">Lumi<span>Nation</span></div>
+    <div class="badge">Walker</div>
+  </div>
+
+  <!-- ── Connection status ──────────────────────────────────────────── -->
+  <div class="status-bar">
+    <div class="dot" id="conn-dot"></div>
+    <span class="status-text" id="conn-text">Connecting…</span>
+    <span class="lamp-count" id="lamp-count">0 lamps</span>
+  </div>
+
+  <!-- ── QR ────────────────────────────────────────────────────────── -->
+  <div class="room-block">
+    <div class="room-label">Lamps scan this to join</div>
+    <div class="qr-frame">
+      <div id="qr"></div>
+    </div>
+    <div class="qr-hint" id="qr-url"></div>
+  </div>
+
+  <!-- ── Live metrics ───────────────────────────────────────────────── -->
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="metric-label">Speed</div>
+      <div class="metric-value" id="speed-val">—
+        <span class="metric-unit">m/s</span>
+      </div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Corridor</div>
+      <div class="metric-value" id="corridor-val">—
+        <span class="metric-unit">m</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="gps-accuracy" id="gps-accuracy">GPS: waiting…</div>
+
+  <!-- ── Settings ───────────────────────────────────────────────────── -->
+  <div class="collapsible" id="settings-panel">
+    <div class="collapsible-header" id="settings-toggle">
+      <span class="collapsible-title">Settings</span>
+      <span class="chevron" id="settings-chevron">▼</span>
+    </div>
+    <div class="collapsible-body" id="settings-body">
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label">Lookahead</span>
+          <span class="slider-val" id="lookahead-val">3.0 s</span>
+        </div>
+        <input type="range" class="slim" id="lookahead-slider"
+               min="10" max="80" value="30" step="1">
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label">Baseline brightness</span>
+          <span class="slider-val" id="baseline-val">30%</span>
+        </div>
+        <input type="range" class="slim" id="baseline-slider"
+               min="10" max="60" value="30" step="1">
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Manual override (shown when GPS unavailable) ───────────────── -->
+  <div class="collapsible" id="override-panel">
+    <div class="collapsible-header" id="override-toggle">
+      <span class="collapsible-title">Manual override</span>
+      <span class="chevron" id="override-chevron">▼</span>
+    </div>
+    <div class="collapsible-body" id="override-body">
+      <div class="override-hint">GPS unavailable — drag to control all lamps directly</div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label">All-lamp brightness</span>
+          <span class="slider-val" id="override-val">50%</span>
+        </div>
+        <input type="range" class="big" id="override-slider"
+               min="0" max="100" value="50" step="1">
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // QR code points to /audience
+    const audienceUrl = window.location.origin + '/audience'
+    new QRCode(document.getElementById('qr'), {
+      text:         audienceUrl,
+      width:        200,
+      height:       200,
+      colorDark:    '#0d0910',
+      colorLight:   '#FFF8E8',
+      correctLevel: QRCode.CorrectLevel.M,
+    })
+
+    // ── State ─────────────────────────────────────────────────────────────
+    let currentLat  = null
+    let currentLng  = null
+    let gpsVelocity = 0        // m/s from GPS
+    let motionVel   = 0        // m/s estimate from accelerometer
+    let blendedVel  = 0        // final blended + smoothed
+    let heading     = 0        // degrees 0–360
+
+    let lastGpsLat  = null
+    let lastGpsLng  = null
+    let lastGpsTime = null
+
+    let gpsAvailable  = false
+    let motionGranted = false
+
+    // Settings (slider values)
+    let lookaheadSec = 3.0
+    let baselinePct  = 0.30
+    let manualBri    = null    // null = use GPS algorithm; 0..1 = override
+
+    // ── Elements ──────────────────────────────────────────────────────────
+    const connDot      = document.getElementById('conn-dot')
+    const connText     = document.getElementById('conn-text')
+    const lampCountEl  = document.getElementById('lamp-count')
+    const speedEl      = document.getElementById('speed-val')
+    const corridorEl   = document.getElementById('corridor-val')
+    const gpsAccEl     = document.getElementById('gps-accuracy')
+    const lookaheadSl  = document.getElementById('lookahead-slider')
+    const lookaheadVal = document.getElementById('lookahead-val')
+    const baselineSl   = document.getElementById('baseline-slider')
+    const baselineVal  = document.getElementById('baseline-val')
+    const overrideSl   = document.getElementById('override-slider')
+    const overrideVal  = document.getElementById('override-val')
+
+    // ── Collapsibles ──────────────────────────────────────────────────────
+    function initCollapsible(toggleId, bodyId, chevronId) {
+      const toggle  = document.getElementById(toggleId)
+      const body    = document.getElementById(bodyId)
+      const chevron = document.getElementById(chevronId)
+      toggle.addEventListener('click', () => {
+        const open = body.classList.toggle('open')
+        chevron.classList.toggle('open', open)
+      })
+    }
+    initCollapsible('settings-toggle', 'settings-body', 'settings-chevron')
+    initCollapsible('override-toggle', 'override-body', 'override-chevron')
+
+    // ── Slider helpers ────────────────────────────────────────────────────
+    function updateSliderFill(el) {
+      const pct = ((el.value - el.min) / (el.max - el.min)) * 100
+      el.style.setProperty('--fill', pct + '%')
+    }
+
+    lookaheadSl.addEventListener('input', () => {
+      lookaheadSec = lookaheadSl.value / 10
+      lookaheadVal.textContent = lookaheadSec.toFixed(1) + ' s'
+      updateSliderFill(lookaheadSl)
+    })
+    updateSliderFill(lookaheadSl)
+
+    baselineSl.addEventListener('input', () => {
+      baselinePct = baselineSl.value / 100
+      baselineVal.textContent = baselineSl.value + '%'
+      updateSliderFill(baselineSl)
+    })
+    updateSliderFill(baselineSl)
+
+    overrideSl.addEventListener('input', () => {
+      manualBri = overrideSl.value / 100
+      overrideVal.textContent = overrideSl.value + '%'
+      updateSliderFill(overrideSl)
+    })
+    updateSliderFill(overrideSl)
+
+    // ── Haversine (for heading calc) ──────────────────────────────────────
+    function haversineMeters(lat1, lng1, lat2, lng2) {
+      const R  = 6371000
+      const φ1 = lat1 * Math.PI / 180
+      const φ2 = lat2 * Math.PI / 180
+      const Δφ = (lat2 - lat1) * Math.PI / 180
+      const Δλ = (lng2 - lng1) * Math.PI / 180
+      const a  = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+    }
+
+    // ── GPS ───────────────────────────────────────────────────────────────
+    function onGpsSuccess(pos) {
+      const lat  = pos.coords.latitude
+      const lng  = pos.coords.longitude
+      const acc  = pos.coords.accuracy   // meters
+      const now  = Date.now()
+
+      gpsAvailable = true
+
+      // GPS-derived velocity
+      if (lastGpsLat !== null && lastGpsTime !== null) {
+        const dt   = (now - lastGpsTime) / 1000
+        const dist = haversineMeters(lastGpsLat, lastGpsLng, lat, lng)
+
+        if (dt > 0) {
+          // Use browser-provided speed if available (more accurate)
+          if (pos.coords.speed !== null && pos.coords.speed >= 0) {
+            gpsVelocity = pos.coords.speed
+          } else {
+            gpsVelocity = dist / dt
+          }
+
+          // Update heading only if moved enough to be reliable
+          if (dist > 2) {
+            const φ1 = lastGpsLat * Math.PI / 180
+            const φ2 = lat * Math.PI / 180
+            const Δλ = (lng - lastGpsLng) * Math.PI / 180
+            const y  = Math.sin(Δλ) * Math.cos(φ2)
+            const x  = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
+            let h    = Math.atan2(y, x) * 180 / Math.PI
+            if (h < 0) h += 360
+            heading = h
+          }
+        }
+      }
+
+      lastGpsLat  = lat
+      lastGpsLng  = lng
+      lastGpsTime = now
+      currentLat  = lat
+      currentLng  = lng
+
+      // Accuracy display
+      const cls = acc < 10 ? 'ok' : acc < 25 ? 'warn' : 'bad'
+      gpsAccEl.innerHTML = `GPS accuracy: <span class="${cls}">±${Math.round(acc)} m</span>`
+
+      // Clear manual override when GPS works
+      manualBri = null
+    }
+
+    function onGpsError(err) {
+      gpsAvailable = false
+      gpsAccEl.innerHTML = `<span class="bad">GPS unavailable — use manual override</span>`
+      // Auto-open override panel
+      const body    = document.getElementById('override-body')
+      const chevron = document.getElementById('override-chevron')
+      if (!body.classList.contains('open')) {
+        body.classList.add('open')
+        chevron.classList.add('open')
+        // Default manual: send baseline
+        manualBri = baselinePct
+        overrideSl.value = Math.round(baselinePct * 100)
+        updateSliderFill(overrideSl)
+        overrideVal.textContent = Math.round(baselinePct * 100) + '%'
+      }
+    }
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.watchPosition(onGpsSuccess, onGpsError, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000,
+      })
+    } else {
+      onGpsError({ code: 0, message: 'not supported' })
+    }
+
+    // ── Accelerometer (DeviceMotion) ──────────────────────────────────────
+    let lastMotionTime = Date.now()
+
+    function onDeviceMotion(e) {
+      const a = e.acceleration  // without gravity
+      if (!a || (a.x === null && a.y === null && a.z === null)) return
+      const now  = Date.now()
+      const dt   = Math.min((now - lastMotionTime) / 1000, 0.1)
+      lastMotionTime = now
+      const mag  = Math.sqrt((a.x||0)**2 + (a.y||0)**2 + (a.z||0)**2)
+      // Integrate magnitude → rough velocity estimate, with decay to prevent drift
+      motionVel = motionVel * 0.92 + mag * dt
+      motionVel = Math.min(motionVel, 12) // cap at ~running speed
+    }
+
+    async function requestMotion() {
+      if (motionGranted) return
+      if (typeof DeviceMotionEvent !== 'undefined' &&
+          typeof DeviceMotionEvent.requestPermission === 'function') {
+        try {
+          const res = await DeviceMotionEvent.requestPermission()
+          if (res === 'granted') {
+            window.addEventListener('devicemotion', onDeviceMotion)
+            motionGranted = true
+          }
+        } catch (_) {}
+      } else {
+        window.addEventListener('devicemotion', onDeviceMotion)
+        motionGranted = true
+      }
+    }
+
+    // Request on first tap (iOS requires gesture)
+    document.addEventListener('click', requestMotion, { once: true })
+
+    // ── Velocity blend + smoothing ─────────────────────────────────────────
+    function updateVelocity() {
+      if (!gpsAvailable) {
+        blendedVel = 0
+        return
+      }
+      const raw  = 0.6 * gpsVelocity + 0.4 * motionVel
+      blendedVel = blendedVel * (1 - 0.25) + raw * 0.25  // EMA α=0.25
+    }
+
+    // ── UI update ─────────────────────────────────────────────────────────
+    function updateMetrics() {
+      updateVelocity()
+      const corridor = blendedVel * lookaheadSec
+      speedEl.innerHTML    = blendedVel.toFixed(1) + ' <span class="metric-unit">m/s</span>'
+      corridorEl.innerHTML = corridor.toFixed(0) + ' <span class="metric-unit">m</span>'
+    }
+
+    // ── Emit to server (every 150ms) ──────────────────────────────────────
+    setInterval(() => {
+      updateMetrics()
+
+      socket.emit('host:update', {
+        lat:         currentLat,
+        lng:         currentLng,
+        velocity:    blendedVel,
+        heading:     heading,
+        lookaheadSec,
+        baselinePct,
+        manualBri:   gpsAvailable ? null : manualBri,
+      })
+    }, 150)
+
+    // ── Socket.io ─────────────────────────────────────────────────────────
+    const socket = io()
+
+    socket.on('connect', () => {
+      connDot.className  = 'dot on'
+      connText.textContent = 'Connected'
+      document.getElementById('qr-url').textContent = audienceUrl
+    socket.emit('host:join')
+    })
+
+    socket.on('disconnect', () => {
+      connDot.className  = 'dot'
+      connText.textContent = 'Disconnected — reconnecting…'
+    })
+
+    socket.on('session:state', ({ lampsConnected }) => {
+      lampCountEl.textContent = lampsConnected + (lampsConnected === 1 ? ' lamp' : ' lamps')
+    })
+  </script>
+</body>
+</html>
