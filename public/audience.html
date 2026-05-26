@@ -304,12 +304,14 @@
       return diff
     }
 
+    const MIN_RADIUS = 15  // metres — always react within this distance
+
     // ── Corridor state ────────────────────────────────────────────────────
     let hostLat      = null
     let hostLng      = null
     let hostVelocity = 0
     let hostHeading  = 0
-    let lookaheadSec = 3.0
+    let lookaheadSec = 5.0
     let baselinePct  = 0.30
 
     // Brightness animation
@@ -340,23 +342,26 @@
     const lampCntEl = document.getElementById('lamp-count')
 
     function applyBrightness(bri) {
-      // How much above baseline we are (0 = at baseline, 1 = fully lit)
+      // t = 0 at baseline, 1 at fully lit
       const t = Math.max(0, Math.min(1, (bri - baselinePct) / Math.max(1 - baselinePct, 0.01)))
 
-      // Baseline always shows a small warm glow
-      const r1 = t * 180
-      const r2 = t * 320
-      const r3 = 50 + t * 450   // small glow even at baseline
+      // Solid background flood — entire screen changes colour
+      const r = Math.round(7   + (255 - 7)   * t)
+      const g = Math.round(7   + (200 - 7)   * t)
+      const b = Math.round(12  + (80  - 12)  * t)
+      bgEl.style.background = `rgb(${r},${g},${b})`
 
-      bgEl.style.background = [
-        `radial-gradient(circle at center, rgba(255,248,232,${(0.9*t).toFixed(3)}) 0px, rgba(255,248,232,0) ${r1.toFixed(0)}px)`,
-        `radial-gradient(circle at center, rgba(250,199,117,${(0.85*t).toFixed(3)}) 0px, rgba(250,199,117,0) ${r2.toFixed(0)}px)`,
-        `radial-gradient(circle at center, rgba(200,140,40,0.28) 0px, rgba(200,140,40,0) ${r3.toFixed(0)}px)`,
-        '#07070c',
-      ].join(', ')
+      // Hotspot overlay on top for depth (doesn't replace flood, adds to it)
+      if (t > 0.05) {
+        bgEl.style.backgroundImage = [
+          `radial-gradient(ellipse 80% 60% at center, rgba(255,248,220,${(0.4*t).toFixed(3)}) 0%, transparent 70%)`,
+        ].join(', ')
+      } else {
+        bgEl.style.backgroundImage = 'none'
+      }
 
-      // Switch text to dark when screen is very bright
-      bodyEl.classList.toggle('lit', t > 0.55)
+      // Switch text to dark when screen is bright
+      bodyEl.classList.toggle('lit', t > 0.4)
     }
 
     // ── Animation loop ────────────────────────────────────────────────────
@@ -368,28 +373,26 @@
       let target = baselinePct
 
       if (manualBri !== null) {
-        // Host sent a manual override — use it directly
         target = manualBri
       } else if (myLat !== null && hostLat !== null) {
-        const dist    = haversineMeters(myLat, myLng, hostLat, hostLng)
-        const diff    = bearingDiff(hostLat, hostLng, hostHeading, myLat, myLng)
-        const isAhead = Math.abs(diff) < 90
+        const dist         = haversineMeters(myLat, myLng, hostLat, hostLng)
+        const diff         = bearingDiff(hostLat, hostLng, hostHeading, myLat, myLng)
+        const isAhead      = Math.abs(diff) < 90
+        const lookaheadDist = Math.max(hostVelocity * lookaheadSec, MIN_RADIUS)
 
-        const lookaheadDist = hostVelocity * lookaheadSec
-        const safetyBehind  = 2.0  // meters
-
-        if (isAhead && lookaheadDist > 0 && dist <= lookaheadDist) {
-          const t = 1 - (dist / lookaheadDist)
-          target  = baselinePct + (1 - baselinePct) * t
-        } else if (!isAhead && dist <= safetyBehind) {
-          target  = baselinePct + 0.15
+        if (dist <= lookaheadDist) {
+          // Inside corridor — brightness scales with proximity (1 = right next to host)
+          const proximity = 1 - (dist / lookaheadDist)
+          // Ahead gets full brightness, behind gets 60% — no hard cutoff
+          const dirFactor = isAhead ? 1.0 : 0.6
+          target = baselinePct + (1 - baselinePct) * proximity * dirFactor
         } else {
-          target  = baselinePct
+          target = baselinePct
         }
       }
 
-      // Asymmetric easing: fast warm-up (τ=0.3s), slow dim-down (τ=0.8s)
-      const τ    = target > currentBri ? 0.3 : 0.8
+      // Asymmetric easing: fast warm-up (τ=0.15s), slow dim-down (τ=0.5s)
+      const τ    = target > currentBri ? 0.15 : 0.5
       const ease = 1 - Math.exp(-dt / τ)
       currentBri += (target - currentBri) * ease
       currentBri  = Math.max(0, Math.min(1, currentBri))
@@ -409,7 +412,7 @@
           `distance : ${dist}\n` +
           `I am ahead: ${ahead}\n` +
           `host speed: ${hostVelocity.toFixed(1)} m/s\n` +
-          `lookahead : ${(hostVelocity * lookaheadSec).toFixed(0)}m (${lookaheadSec}s)\n` +
+          `lookahead : ${Math.max(hostVelocity * lookaheadSec, MIN_RADIUS).toFixed(0)}m (min ${MIN_RADIUS}m)\n` +
           `heading  : ${hostHeading.toFixed(0)}°\n` +
           `baseline : ${(baselinePct * 100).toFixed(0)}%\n` +
           `brightness: ${(currentBri * 100).toFixed(0)}%\n` +

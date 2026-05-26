@@ -397,23 +397,23 @@
       correctLevel: QRCode.CorrectLevel.M,
     })
 
+    // Minimum corridor radius regardless of speed (lamps always react within this)
+    const MIN_RADIUS = 15  // metres
+
     // ── State ─────────────────────────────────────────────────────────────
-    let currentLat  = null
-    let currentLng  = null
-    let gpsVelocity = 0        // m/s from GPS
-    let motionVel   = 0        // m/s estimate from accelerometer
-    let blendedVel  = 0        // final blended + smoothed
-    let heading     = 0        // degrees 0–360
+    let currentLat = null
+    let currentLng = null
+    let smoothVel  = 0     // EMA-smoothed GPS speed (m/s)
+    let heading    = 0     // degrees 0–360
 
     let lastGpsLat  = null
     let lastGpsLng  = null
     let lastGpsTime = null
 
-    let gpsAvailable  = false
-    let motionGranted = false
+    let gpsAvailable = false
 
     // Settings (slider values)
-    let lookaheadSec = 3.0
+    let lookaheadSec = 5.0
     let baselinePct  = 0.30
     let manualBri    = null    // null = use GPS algorithm; 0..1 = override
 
@@ -450,6 +450,8 @@
       el.style.setProperty('--fill', pct + '%')
     }
 
+    lookaheadSl.value = 50  // default 5.0s
+    lookaheadVal.textContent = '5.0 s'
     lookaheadSl.addEventListener('input', () => {
       lookaheadSec = lookaheadSl.value / 10
       lookaheadVal.textContent = lookaheadSec.toFixed(1) + ' s'
@@ -491,30 +493,31 @@
 
       gpsAvailable = true
 
-      // GPS-derived velocity
-      if (lastGpsLat !== null && lastGpsTime !== null) {
+      // Raw speed: prefer browser-provided (most accurate), fallback to position delta
+      let rawSpeed = 0
+      if (pos.coords.speed !== null && pos.coords.speed >= 0) {
+        rawSpeed = pos.coords.speed
+      } else if (lastGpsLat !== null && lastGpsTime !== null) {
         const dt   = (now - lastGpsTime) / 1000
         const dist = haversineMeters(lastGpsLat, lastGpsLng, lat, lng)
+        if (dt > 0) rawSpeed = dist / dt
+      }
 
-        if (dt > 0) {
-          // Use browser-provided speed if available (more accurate)
-          if (pos.coords.speed !== null && pos.coords.speed >= 0) {
-            gpsVelocity = pos.coords.speed
-          } else {
-            gpsVelocity = dist / dt
-          }
+      // Fast EMA (α=0.8) — responsive, not sluggish
+      smoothVel = smoothVel * 0.2 + rawSpeed * 0.8
 
-          // Update heading only if moved enough to be reliable
-          if (dist > 2) {
-            const φ1 = lastGpsLat * Math.PI / 180
-            const φ2 = lat * Math.PI / 180
-            const Δλ = (lng - lastGpsLng) * Math.PI / 180
-            const y  = Math.sin(Δλ) * Math.cos(φ2)
-            const x  = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
-            let h    = Math.atan2(y, x) * 180 / Math.PI
-            if (h < 0) h += 360
-            heading = h
-          }
+      // Heading: update only when moving enough to be reliable
+      if (lastGpsLat !== null) {
+        const dist = haversineMeters(lastGpsLat, lastGpsLng, lat, lng)
+        if (dist > 1.5) {
+          const φ1 = lastGpsLat * Math.PI / 180
+          const φ2 = lat * Math.PI / 180
+          const Δλ = (lng - lastGpsLng) * Math.PI / 180
+          const y  = Math.sin(Δλ) * Math.cos(φ2)
+          const x  = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
+          let h = Math.atan2(y, x) * 180 / Math.PI
+          if (h < 0) h += 360
+          heading = h
         }
       }
 
@@ -559,56 +562,10 @@
       onGpsError({ code: 0, message: 'not supported' })
     }
 
-    // ── Accelerometer (DeviceMotion) ──────────────────────────────────────
-    let lastMotionTime = Date.now()
-
-    function onDeviceMotion(e) {
-      const a = e.acceleration  // without gravity
-      if (!a || (a.x === null && a.y === null && a.z === null)) return
-      const now  = Date.now()
-      const dt   = Math.min((now - lastMotionTime) / 1000, 0.1)
-      lastMotionTime = now
-      const mag  = Math.sqrt((a.x||0)**2 + (a.y||0)**2 + (a.z||0)**2)
-      // Integrate magnitude → rough velocity estimate, with decay to prevent drift
-      motionVel = motionVel * 0.92 + mag * dt
-      motionVel = Math.min(motionVel, 12) // cap at ~running speed
-    }
-
-    async function requestMotion() {
-      if (motionGranted) return
-      if (typeof DeviceMotionEvent !== 'undefined' &&
-          typeof DeviceMotionEvent.requestPermission === 'function') {
-        try {
-          const res = await DeviceMotionEvent.requestPermission()
-          if (res === 'granted') {
-            window.addEventListener('devicemotion', onDeviceMotion)
-            motionGranted = true
-          }
-        } catch (_) {}
-      } else {
-        window.addEventListener('devicemotion', onDeviceMotion)
-        motionGranted = true
-      }
-    }
-
-    // Request on first tap (iOS requires gesture)
-    document.addEventListener('click', requestMotion, { once: true })
-
-    // ── Velocity blend + smoothing ─────────────────────────────────────────
-    function updateVelocity() {
-      if (!gpsAvailable) {
-        blendedVel = 0
-        return
-      }
-      const raw  = 0.6 * gpsVelocity + 0.4 * motionVel
-      blendedVel = blendedVel * (1 - 0.25) + raw * 0.25  // EMA α=0.25
-    }
-
     // ── UI update ─────────────────────────────────────────────────────────
     function updateMetrics() {
-      updateVelocity()
-      const corridor = blendedVel * lookaheadSec
-      speedEl.innerHTML    = blendedVel.toFixed(1) + ' <span class="metric-unit">m/s</span>'
+      const corridor = Math.max(smoothVel * lookaheadSec, MIN_RADIUS)
+      speedEl.innerHTML    = smoothVel.toFixed(1) + ' <span class="metric-unit">m/s</span>'
       corridorEl.innerHTML = corridor.toFixed(0) + ' <span class="metric-unit">m</span>'
     }
 
@@ -619,7 +576,7 @@
       socket.emit('host:update', {
         lat:         currentLat,
         lng:         currentLng,
-        velocity:    blendedVel,
+        velocity:    smoothVel,
         heading:     heading,
         lookaheadSec,
         baselinePct,
