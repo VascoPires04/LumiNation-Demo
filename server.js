@@ -83,6 +83,10 @@ app.get('/logs', (_req, res) => {
 </html>`)
 })
 
+app.get('/logs/json', (_req, res) => {
+  res.json(logBuffer)
+})
+
 app.get('/logs/stream', (req, res) => {
   res.setHeader('Content-Type',  'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
