@@ -247,25 +247,21 @@
       }
     }
 
-    function onGpsError() {
-      if (!connected) {
-        connected = true
-        gpsStatusEl.textContent = 'No GPS — joining as baseline lamp.'
-        setTimeout(() => {
-          gpsOverlay.classList.add('gone')
-          connectSocket()
-        }, 1200)
-      }
+    function onGpsError(err) {
+      const msg = err && err.code === 1
+        ? 'Location access denied. Allow location in your browser and reload.'
+        : 'Could not get location. Check browser permissions and reload.'
+      gpsStatusEl.innerHTML = `${msg}<br><br><span style="color:#FAC775;text-decoration:underline;cursor:pointer" onclick="location.reload()">Tap to reload</span>`
     }
 
     if ('geolocation' in navigator) {
       navigator.geolocation.watchPosition(onGpsSuccess, onGpsError, {
         enableHighAccuracy: true,
         maximumAge: 0,
-        timeout: 8000,
+        // no timeout — let the browser take as long as it needs (WiFi loc on PC can be slow)
       })
     } else {
-      onGpsError()
+      gpsStatusEl.textContent = 'Geolocation not supported in this browser.'
     }
 
     // ── WakeLock ──────────────────────────────────────────────────────────
